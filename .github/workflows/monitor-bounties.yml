@@ -11,12 +11,31 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      
       - name: Check for bounty issues
         id: check-issues
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const fs = require('fs');
+            const path = '.github/sent-issues.json';
+            
+            // Load previously sent issues
+            let sentIssues = [];
+            try {
+              if (fs.existsSync(path)) {
+                sentIssues = JSON.parse(fs.readFileSync(path, 'utf8'));
+              }
+            } catch (error) {
+              console.log('No previous record found, starting fresh');
+            }
+            
+            // Fetch open issues with Help Wanted label
             const issues = await github.rest.issues.listForRepo({
               owner: 'Expensify',
               repo: 'App',
@@ -27,20 +46,13 @@ jobs:
               direction: 'desc'
             });
             
-            // Get timestamp of last check (24 hours ago as fallback)
-            const lastCheck = new Date(Date.now() - 24 * 60 * 60 * 1000);
-            
+            // Filter for bounty issues
             const bountyIssues = issues.data.filter(issue => {
               const title = issue.title;
-              const createdAt = new Date(issue.created_at);
-              
-              // Check if issue has $250 or $500 in title
               const hasBounty = /\$250|\$500/i.test(title);
+              const notSent = !sentIssues.includes(issue.number);
               
-              // Only include recent issues
-              const isRecent = createdAt > lastCheck;
-              
-              return hasBounty && isRecent;
+              return hasBounty && notSent;
             });
             
             if (bountyIssues.length > 0) {
@@ -54,15 +66,38 @@ jobs:
                 emailBody += `- **Bounty:** ${bounty}\n`;
                 emailBody += `- **Issue:** #${issue.number}\n`;
                 emailBody += `- **Link:** ${issue.html_url}\n`;
-                emailBody += `- **Created:** ${issue.created_at}\n\n`;
+                emailBody += `- **Created:** ${issue.created_at}\n`;
+                emailBody += `- **Labels:** ${issue.labels.map(l => l.name).join(', ')}\n\n`;
+                
+                // Add to sent list
+                sentIssues.push(issue.number);
               });
+              
+              // Keep only last 500 issue numbers to prevent file from growing too large
+              if (sentIssues.length > 500) {
+                sentIssues = sentIssues.slice(-500);
+              }
+              
+              // Save updated list
+              fs.writeFileSync(path, JSON.stringify(sentIssues, null, 2));
               
               core.setOutput('has-bounties', 'true');
               core.setOutput('email-body', emailBody);
               core.setOutput('issue-count', bountyIssues.length);
+              core.setOutput('updated', 'true');
             } else {
               core.setOutput('has-bounties', 'false');
+              core.setOutput('updated', 'false');
             }
+      
+      - name: Commit tracking file
+        if: steps.check-issues.outputs.updated == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .github/sent-issues.json
+          git commit -m "Track sent bounty notifications" || echo "No changes to commit"
+          git push || echo "No changes to push"
       
       - name: Send Email Notification
         if: steps.check-issues.outputs.has-bounties == 'true'
