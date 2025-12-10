@@ -65,6 +65,7 @@ jobs:
                 emailBody += `## ${issue.title}\n`;
                 emailBody += `- **Bounty:** ${bounty}\n`;
                 emailBody += `- **Issue:** #${issue.number}\n`;
+                emailBody += `- **Comments:** ${issue.comments}\n`;
                 emailBody += `- **Link:** ${issue.html_url}\n`;
                 emailBody += `- **Created:** ${issue.created_at}\n`;
                 emailBody += `- **Labels:** ${issue.labels.map(l => l.name).join(', ')}\n\n`;
