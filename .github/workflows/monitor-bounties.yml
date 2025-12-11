@@ -4,12 +4,15 @@ on:
   schedule:
     # Runs every 15 minutes
     - cron: '*/15 * * * *'
-  workflow_dispatch: # Allows manual trigger
+  workflow_dispatch: # Allows manual trigger from Actions tab
 
 jobs:
   monitor-bounties:
     runs-on: ubuntu-latest
     
+    permissions:
+      contents: write # Required to commit the json file back to repo
+      
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -25,7 +28,7 @@ jobs:
             const fs = require('fs');
             const path = '.github/sent-issues.json';
             
-            // Load previously sent issues
+            // 1. Load previously sent issues to avoid duplicates
             let sentIssues = [];
             try {
               if (fs.existsSync(path)) {
@@ -35,7 +38,7 @@ jobs:
               console.log('No previous record found, starting fresh');
             }
             
-            // Fetch open issues with Help Wanted label
+            // 2. Fetch open issues with 'Help Wanted' label from Expensify
             const issues = await github.rest.issues.listForRepo({
               owner: 'Expensify',
               repo: 'App',
@@ -46,9 +49,10 @@ jobs:
               direction: 'desc'
             });
             
-            // Filter for bounty issues
+            // 3. Filter for Bounty issues (containing $ amounts) that we haven't sent yet
             const bountyIssues = issues.data.filter(issue => {
               const title = issue.title;
+              // Regex looks for $250 or $500 (case insensitive)
               const hasBounty = /\$250|\$500/i.test(title);
               const notSent = !sentIssues.includes(issue.number);
               
@@ -56,37 +60,60 @@ jobs:
             });
             
             if (bountyIssues.length > 0) {
-              let emailBody = '# New Bounty Issues Found!\n\n';
+              console.log(`Found ${bountyIssues.length} new bounties.`);
+
+              // --- A. Generate Dynamic Subject Line ---
+              let subjectLine = '';
+              if (bountyIssues.length === 1) {
+                const issue = bountyIssues[0];
+                const bountyMatch = issue.title.match(/\$\d+/);
+                const bounty = bountyMatch ? bountyMatch[0] : '[$?]';
+                // Remove price from title for cleaner subject
+                const cleanTitle = issue.title.replace(/\$\d+/, '').replace(/-/, '').trim(); 
+                // Result: "Expensify - [$500] - Fix Login Bug - 3 comments"
+                subjectLine = `Expensify - ${bounty} - ${cleanTitle} - ${issue.comments} comments`;
+              } else {
+                subjectLine = `Expensify - ${bountyIssues.length} New Bounties Found!`;
+              }
+
+              // --- B. Generate HTML Email Body ---
+              let emailBody = '<div style="font-family: sans-serif; color: #333; max-width: 600px;">';
+              emailBody += `<h2>🎯 ${bountyIssues.length} New Bounties Found</h2>`;
               
               bountyIssues.forEach(issue => {
                 const bountyMatch = issue.title.match(/\$\d+/);
                 const bounty = bountyMatch ? bountyMatch[0] : 'Unknown';
                 
-                emailBody += `## ${issue.title}\n`;
-                emailBody += `- **Bounty:** ${bounty}\n`;
-                emailBody += `- **Issue:** #${issue.number}\n`;
-                emailBody += `- **Comments:** ${issue.comments}\n`;
-                emailBody += `- **Link:** ${issue.html_url}\n`;
-                emailBody += `- **Created:** ${issue.created_at}\n`;
-                emailBody += `- **Labels:** ${issue.labels.map(l => l.name).join(', ')}\n\n`;
+                // HTML Card Style
+                emailBody += `<div style="border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; border-radius: 8px; background-color: #f9f9f9;">`;
+                emailBody += `<h3 style="margin-top: 0; color: #0366d6;">${issue.title}</h3>`;
+                emailBody += `<p style="font-size: 14px;"><strong>💰 Bounty:</strong> <span style="color: #28a745; font-weight: bold; font-size: 16px;">${bounty}</span></p>`;
+                emailBody += `<p style="font-size: 14px;"><strong>💬 Comments:</strong> ${issue.comments}</p>`;
+                emailBody += `<p style="font-size: 14px;"><strong>🏷️ Labels:</strong> ${issue.labels.map(l => l.name).join(', ')}</p>`;
+                emailBody += `<div style="margin-top: 10px;">`;
+                emailBody += `<a href="${issue.html_url}" style="background-color: #0366d6; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 14px;">View Issue on GitHub</a>`;
+                emailBody += `</div>`;
+                emailBody += `</div>`;
                 
-                // Add to sent list
                 sentIssues.push(issue.number);
               });
+              emailBody += '</div>';
               
-              // Keep only last 500 issue numbers to prevent file from growing too large
+              // --- C. Save State ---
+              // Keep only last 500 issues to keep file small
               if (sentIssues.length > 500) {
                 sentIssues = sentIssues.slice(-500);
               }
-              
-              // Save updated list
               fs.writeFileSync(path, JSON.stringify(sentIssues, null, 2));
               
+              // --- D. Set Outputs ---
               core.setOutput('has-bounties', 'true');
               core.setOutput('email-body', emailBody);
-              core.setOutput('issue-count', bountyIssues.length);
+              core.setOutput('email-subject', subjectLine);
               core.setOutput('updated', 'true');
+              
             } else {
+              console.log('No new bounties found.');
               core.setOutput('has-bounties', 'false');
               core.setOutput('updated', 'false');
             }
@@ -98,7 +125,7 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git add .github/sent-issues.json
           git commit -m "Track sent bounty notifications" || echo "No changes to commit"
-          git push || echo "No changes to push"
+          git push
       
       - name: Send Email Notification
         if: steps.check-issues.outputs.has-bounties == 'true'
@@ -108,8 +135,12 @@ jobs:
           server_port: 587
           username: ${{ secrets.EMAIL_USERNAME }}
           password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: '🎯 ${{ steps.check-issues.outputs.issue-count }} New Expensify Bounty Issue(s) Found!'
           to: ${{ secrets.RECIPIENT_EMAIL }}
-          from: ${{ secrets.EMAIL_USERNAME }}
+          from: "Bounty Bot <${{ secrets.EMAIL_USERNAME }}>"
+          
+          # Dynamic Subject
+          subject: ${{ steps.check-issues.outputs.email-subject }}
+          
+          # HTML Body
+          content_type: text/html
           body: ${{ steps.check-issues.outputs.email-body }}
-          content_type: text/markdown
