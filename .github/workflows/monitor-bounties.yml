@@ -38,26 +38,36 @@ jobs:
               console.log('No previous record found, starting fresh');
             }
 
-            let totalComments = 0;
+            // Calculate date 2 days ago in ISO format for GitHub API
+            const twoDaysAgo = new Date();
+            twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+            const sinceDate = twoDaysAgo.toISOString();
 
-            // Fetch open issues with Help Wanted label
+            // Fetch open issues with Help Wanted label, filtered by creation date
             const issues = await github.rest.issues.listForRepo({
               owner: 'Expensify',
               repo: 'App',
               state: 'open',
               labels: 'Help Wanted',
+              since: sinceDate,
               per_page: 100,
               sort: 'created',
               direction: 'desc'
             });
 
-            // Filter for bounty issues
+            // Filter for bounty issues not yet sent
             const bountyIssues = issues.data.filter(issue => {
               const title = issue.title;
-              const hasBounty = /\$250|\$500/i.test(title);
+              const hasBounty = /\$50|\$100|\$125|\$250|\$300|\$500/i.test(title);
               const notSent = !sentIssues.includes(issue.number);
               return hasBounty && notSent;
             });
+
+            // Sort by creation date - newest first
+            bountyIssues.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            // Sort by creation date - newest first
+            bountyIssues.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
             if (bountyIssues.length > 0) {
               let emailBody = '# New Bounty Issues Found!\n\n';
@@ -74,8 +84,6 @@ jobs:
                 emailBody += `- Created: ${issue.created_at}\n`;
                 emailBody += `- Labels: ${issue.labels.map(l => l.name).join(', ')}\n\n`;
 
-                totalComments = issue.comments;
-
                 // Track this issue as notified
                 sentIssues.push(issue.number);
               });
@@ -90,7 +98,6 @@ jobs:
               core.setOutput('has-bounties', 'true');
               core.setOutput('email-body', emailBody);
               core.setOutput('issue-count', bountyIssues.length);
-              core.setOutput('total-comments', totalComments);
               core.setOutput('updated', 'true');
             } else {
               core.setOutput('has-bounties', 'false');
