@@ -38,33 +38,28 @@ jobs:
               console.log('No previous record found, starting fresh');
             }
 
-            // Calculate date 2 days ago in ISO format for GitHub API
+            // Use GitHub search API with created date filter
             const twoDaysAgo = new Date();
             twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-            const sinceDate = twoDaysAgo.toISOString();
+            const createdFilter = twoDaysAgo.toISOString().split('T')[0];
 
-            // Fetch open issues with Help Wanted label, filtered by creation date
-            const issues = await github.rest.issues.listForRepo({
-              owner: 'Expensify',
-              repo: 'App',
-              state: 'open',
-              labels: 'Help Wanted',
-              since: sinceDate,
-              per_page: 100,
+            // Search for issues created in last 2 days with Help Wanted label
+            const searchQuery = `repo:Expensify/App is:issue is:open label:"Help Wanted" created:>=${createdFilter}`;
+            
+            const issues = await github.rest.search.issuesAndPullRequests({
+              q: searchQuery,
               sort: 'created',
-              direction: 'desc'
+              order: 'desc',
+              per_page: 100
             });
 
             // Filter for bounty issues not yet sent
-            const bountyIssues = issues.data.filter(issue => {
+            const bountyIssues = issues.data.items.filter(issue => {
               const title = issue.title;
               const hasBounty = /\$50|\$100|\$125|\$250|\$300|\$500/i.test(title);
               const notSent = !sentIssues.includes(issue.number);
               return hasBounty && notSent;
             });
-
-            // Sort by creation date - newest first
-            bountyIssues.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
             // Sort by creation date - newest first
             bountyIssues.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
