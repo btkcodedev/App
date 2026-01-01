@@ -43,22 +43,39 @@ jobs:
             twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
             const createdFilter = twoDaysAgo.toISOString().split('T')[0];
 
-            // Search for issues created in last 2 days with Help Wanted label
-            const searchQuery = `repo:Expensify/App is:issue is:open label:"Help Wanted" created:>=${createdFilter}`;
-            
-            const issues = await github.rest.search.issuesAndPullRequests({
-              q: searchQuery,
+            // Search 1: Issues with Help Wanted label
+            const helpWantedQuery = `repo:Expensify/App is:issue is:open label:"Help Wanted" created:>=${createdFilter}`;
+            const helpWantedIssues = await github.rest.search.issuesAndPullRequests({
+              q: helpWantedQuery,
               sort: 'created',
               order: 'desc',
               per_page: 100
             });
 
+            // Search 2: Issues with [$250] in title (regardless of label)
+            const high250Query = `repo:Expensify/App is:issue is:open "$250" in:title created:>=${createdFilter}`;
+            const high250Issues = await github.rest.search.issuesAndPullRequests({
+              q: high250Query,
+              sort: 'created',
+              order: 'desc',
+              per_page: 100
+            });
+
+            // Combine and deduplicate issues
+            const allIssuesMap = new Map();
+            [...helpWantedIssues.data.items, ...high250Issues.data.items].forEach(issue => {
+              allIssuesMap.set(issue.number, issue);
+            });
+
             // Filter for bounty issues not yet sent
-            const bountyIssues = issues.data.items.filter(issue => {
+            const bountyIssues = Array.from(allIssuesMap.values()).filter(issue => {
               const title = issue.title;
               const hasBounty = /\$50|\$100|\$125|\$250|\$300|\$500/i.test(title);
               const notSent = !sentIssues.includes(issue.number);
-              return hasBounty && notSent;
+              const has250 = /\[\$250\]/.test(title);
+              
+              // Include if: (has bounty AND has Help Wanted label) OR (has [$250] in title)
+              return notSent && (hasBounty || has250);
             });
 
             // Sort by creation date - newest first
@@ -66,14 +83,23 @@ jobs:
 
             if (bountyIssues.length > 0) {
               let emailBody = '# New Bounty Issues Found!\n\n';
+              let hasHighProbability = false;
 
               bountyIssues.forEach(issue => {
                 const bountyMatch = issue.title.match(/\$\d+/);
                 const bounty = bountyMatch ? bountyMatch[0] : 'Unknown';
+                const isHighProbability = issue.user.login === 'mitarachim';
 
-                emailBody += `## ${issue.title}\n`;
+                if (isHighProbability) {
+                  hasHighProbability = true;
+                  emailBody += `## 🔥 HIGH PROBABILITY: ${issue.title}\n`;
+                } else {
+                  emailBody += `## ${issue.title}\n`;
+                }
+                
                 emailBody += `- Bounty: ${bounty}\n`;
                 emailBody += `- Issue: #${issue.number}\n`;
+                emailBody += `- Creator: @${issue.user.login}\n`;
                 emailBody += `- Comments: ${issue.comments}\n`;
                 emailBody += `- Link: ${issue.html_url}\n`;
                 emailBody += `- Created: ${issue.created_at}\n`;
@@ -94,9 +120,11 @@ jobs:
               core.setOutput('email-body', emailBody);
               core.setOutput('issue-count', bountyIssues.length);
               core.setOutput('updated', 'true');
+              core.setOutput('high-probability', hasHighProbability.toString());
             } else {
               core.setOutput('has-bounties', 'false');
               core.setOutput('updated', 'false');
+              core.setOutput('high-probability', 'false');
             }
 
       - name: Commit tracking file
@@ -118,6 +146,7 @@ jobs:
           password: ${{ secrets.EMAIL_PASSWORD }}
           to: ${{ secrets.RECIPIENT_EMAIL }}
           from: ${{ secrets.EMAIL_USERNAME }}
-          subject: 'New Expensify Bounties (${{ steps.check-issues.outputs.issue-count }})'
+          subject: ${{ steps.check-issues.outputs.high-probability == 'true' && format('High Probability - New Expensify Bounties ({0})', steps.check-issues.outputs.issue-count) || format('New Expensify Bounties ({0})', steps.check-issues.outputs.issue-count) }}
           body: ${{ steps.check-issues.outputs.email-body }}
-          content_type: text/markdown
+          html_body: ${{ steps.check-issues.outputs.email-body }}
+          convert_markdown: true
