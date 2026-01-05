@@ -53,7 +53,7 @@ jobs:
             });
 
             // Search 2: Issues with [$250] in title (regardless of label)
-            const high250Query = `repo:Expensify/App is:issue is:open "$250" in:title created:>=${createdFilter}`;
+            const high250Query = `repo:Expensify/App is:issue is:open "[$250]" in:title created:>=${createdFilter}`;
             const high250Issues = await github.rest.search.issuesAndPullRequests({
               q: high250Query,
               sort: 'created',
