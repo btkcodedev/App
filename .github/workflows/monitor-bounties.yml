@@ -51,35 +51,41 @@ jobs:
               order: 'desc',
               per_page: 100
             });
+            console.log(`Found ${helpWantedIssues.data.items.length} Help Wanted issues`);
 
-            // Search 2: Issues with [$250] in title (regardless of label)
-            const high250Query = `repo:Expensify/App is:issue is:open "[$250]" in:title created:>=${createdFilter}`;
+            // Search 2: Issues with $250 in title (regardless of label) - search for any $250 pattern
+            const high250Query = `repo:Expensify/App is:issue is:open $250 in:title created:>=${createdFilter}`;
             const high250Issues = await github.rest.search.issuesAndPullRequests({
               q: high250Query,
               sort: 'created',
               order: 'desc',
               per_page: 100
             });
+            console.log(`Found ${high250Issues.data.items.length} $250 issues`);
 
             // Combine and deduplicate issues
             const allIssuesMap = new Map();
             [...helpWantedIssues.data.items, ...high250Issues.data.items].forEach(issue => {
               allIssuesMap.set(issue.number, issue);
             });
+            console.log(`Total unique issues after combining: ${allIssuesMap.size}`);
 
             // Filter for bounty issues not yet sent
             const bountyIssues = Array.from(allIssuesMap.values()).filter(issue => {
               const title = issue.title;
               const notSent = !sentIssues.includes(issue.number);
-              const has250 = /\[\$250\]/.test(title);
+              const has250 = /\$250|\[\$250\]/i.test(title);
               const hasBounty = /\$50|\$100|\$125|\$250|\$300|\$500/i.test(title);
               const hasHelpWanted = issue.labels.some(label => label.name === 'Help Wanted');
               
+              console.log(`Issue #${issue.number}: has250=${has250}, hasBounty=${hasBounty}, hasHelpWanted=${hasHelpWanted}, notSent=${notSent}`);
+              
               // Include if NOT already sent AND:
-              // 1. Has [$250] in title (regardless of labels) OR
+              // 1. Has $250 or [$250] in title (regardless of labels) OR
               // 2. Has any bounty AND has Help Wanted label
               return notSent && (has250 || (hasBounty && hasHelpWanted));
             });
+            console.log(`Filtered to ${bountyIssues.length} bounty issues to notify`);
 
             // Sort by creation date - newest first
             bountyIssues.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
