@@ -54,7 +54,7 @@ jobs:
             console.log(`Found ${helpWantedIssues.data.items.length} Help Wanted issues`);
 
             // Search 2: Issues with $250 in title (regardless of label) - search for any $250 pattern
-            const high250Query = `repo:Expensify/App is:issue is:open $250 in:title created:>=${createdFilter}`;
+            const high250Query = `repo:Expensify/App is:issue is:open in:title "$250" created:>=${createdFilter}`;
             const high250Issues = await github.rest.search.issuesAndPullRequests({
               q: high250Query,
               sort: 'created',
