@@ -43,6 +43,7 @@ jobs:
             twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
             const createdFilter = twoDaysAgo.toISOString().split('T')[0];
 
+            /*
             // Search 1: Issues with Help Wanted label
             const helpWantedQuery = `repo:Expensify/App is:issue is:open label:"Help Wanted" created:>=${createdFilter}`;
             const helpWantedIssues = await github.rest.search.issuesAndPullRequests({
@@ -52,20 +53,21 @@ jobs:
               per_page: 100
             });
             console.log(`Found ${helpWantedIssues.data.items.length} Help Wanted issues`);
+            */
 
-            // Search 2: Issues with $250 in title (regardless of label) - search for any $250 pattern
-            const high250Query = `repo:Expensify/App is:issue is:open in:title "$250" created:>=${createdFilter}`;
-            const high250Issues = await github.rest.search.issuesAndPullRequests({
-              q: high250Query,
+            // Search 2: Issues with $250 or $125 in title (regardless of label) - search for any $250 or $125 pattern
+            const bountyQuery = `repo:Expensify/App is:issue is:open "$250" OR "$125" in:title created:>=${createdFilter}`;
+            const bountySearchIssues = await github.rest.search.issuesAndPullRequests({
+              q: bountyQuery,
               sort: 'created',
               order: 'desc',
               per_page: 100
             });
-            console.log(`Found ${high250Issues.data.items.length} $250 issues`);
+            console.log(`Found ${bountySearchIssues.data.items.length} bounty issues`);
 
             // Combine and deduplicate issues
             const allIssuesMap = new Map();
-            [...helpWantedIssues.data.items, ...high250Issues.data.items].forEach(issue => {
+            [...bountySearchIssues.data.items].forEach(issue => {
               allIssuesMap.set(issue.number, issue);
             });
             console.log(`Total unique issues after combining: ${allIssuesMap.size}`);
@@ -74,16 +76,14 @@ jobs:
             const bountyIssues = Array.from(allIssuesMap.values()).filter(issue => {
               const title = issue.title;
               const notSent = !sentIssues.includes(issue.number);
-              const has250 = /\$250|\[\$250\]/i.test(title);
-              const hasBounty = /\$50|\$100|\$125|\$250|\$300|\$500/i.test(title);
-              const hasHelpWanted = issue.labels.some(label => label.name === 'Help Wanted');
               
-              console.log(`Issue #${issue.number}: has250=${has250}, hasBounty=${hasBounty}, hasHelpWanted=${hasHelpWanted}, notSent=${notSent}`);
+              // Sharp check for $250 or $125
+              const matchesTarget = /\$250|\[\$250\]|\$125|\[\$125\]/i.test(title);
               
-              // Include if NOT already sent AND:
-              // 1. Has $250 or [$250] in title (regardless of labels) OR
-              // 2. Has any bounty AND has Help Wanted label
-              return notSent && (has250 || (hasBounty && hasHelpWanted));
+              console.log(`Issue #${issue.number}: matchesTarget=${matchesTarget}, notSent=${notSent}`);
+              
+              // Include if NOT already sent AND matches target bounty
+              return notSent && matchesTarget;
             });
             console.log(`Filtered to ${bountyIssues.length} bounty issues to notify`);
 
