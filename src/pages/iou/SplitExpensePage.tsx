@@ -11,7 +11,7 @@ import MenuItem from '@components/MenuItem';
 import MenuItemWithTopDescription from '@components/MenuItemWithTopDescription';
 import ScreenWrapper from '@components/ScreenWrapper';
 import {useSearchContext} from '@components/Search/SearchContext';
-import type {SectionListDataType, SplitListItemType} from '@components/SelectionListWithSections/types';
+import type {SplitListItemType} from '@components/SelectionList/ListItem/types';
 import TabSelector from '@components/TabSelector/TabSelector';
 import useAllTransactions from '@hooks/useAllTransactions';
 import useCurrentUserPersonalDetails from '@hooks/useCurrentUserPersonalDetails';
@@ -45,6 +45,7 @@ import OnyxTabNavigator, {TabScreenWithFocusTrapWrapper, TopTab} from '@libs/Nav
 import type {PlatformStackScreenProps} from '@libs/Navigation/PlatformStackNavigation/types';
 import type {SplitExpenseParamList} from '@libs/Navigation/types';
 import {isSplitAction} from '@libs/ReportSecondaryActionUtils';
+import type {TransactionDetails} from '@libs/ReportUtils';
 import {getReportOrDraftReport, getTransactionDetails, isReportApproved, isSettled as isSettledReportUtils} from '@libs/ReportUtils';
 import type {TranslationPathOrText} from '@libs/TransactionPreviewUtils';
 import {getChildTransactions, isManagedCardTransaction, isPerDiemRequest} from '@libs/TransactionUtils';
@@ -53,8 +54,7 @@ import ONYXKEYS from '@src/ONYXKEYS';
 import ROUTES from '@src/ROUTES';
 import type SCREENS from '@src/SCREENS';
 import {isEmptyObject} from '@src/types/utils/EmptyObject';
-import SplitAmountList from './SplitAmountList';
-import SplitPercentageList from './SplitPercentageList';
+import SplitList from './SplitList';
 
 type SplitExpensePageProps = PlatformStackScreenProps<SplitExpenseParamList, typeof SCREENS.MONEY_REQUEST.SPLIT_EXPENSE>;
 
@@ -71,7 +71,7 @@ function SplitExpensePage({route}: SplitExpensePageProps) {
 
     const searchContext = useSearchContext();
 
-    const [selectedTab] = useOnyx(`${ONYXKEYS.COLLECTION.SPLIT_SELECTED_TAB}${CONST.TAB.SPLIT_EXPENSE_TAB_TYPE}`, {canBeMissing: true});
+    const [selectedTab] = useOnyx(`${ONYXKEYS.COLLECTION.SELECTED_TAB}${CONST.TAB.SPLIT_EXPENSE_TAB_TYPE}`, {canBeMissing: true});
     const [draftTransaction] = useOnyx(`${ONYXKEYS.COLLECTION.SPLIT_TRANSACTION_DRAFT}${transactionID}`, {canBeMissing: false});
     const transactionReport = getReportOrDraftReport(draftTransaction?.reportID);
     const parentTransactionReport = getReportOrDraftReport(transactionReport?.parentReportID);
@@ -89,6 +89,7 @@ function SplitExpensePage({route}: SplitExpensePageProps) {
     const [allReportNameValuePairs] = useOnyx(ONYXKEYS.COLLECTION.REPORT_NAME_VALUE_PAIRS, {canBeMissing: true});
     const [report] = useOnyx(`${ONYXKEYS.COLLECTION.REPORT}${getNonEmptyStringOnyxID(reportID)}`, {canBeMissing: true});
     const currentReport = report ?? currentSearchResults?.data?.[`${ONYXKEYS.COLLECTION.REPORT}${getNonEmptyStringOnyxID(reportID)}`];
+    const [policyRecentlyUsedCurrencies] = useOnyx(ONYXKEYS.RECENTLY_USED_CURRENCIES, {canBeMissing: true});
     const [policyRecentlyUsedCategories] = useOnyx(`${ONYXKEYS.COLLECTION.POLICY_RECENTLY_USED_CATEGORIES}${getIOURequestPolicyID(transaction, currentReport)}`, {canBeMissing: true});
 
     const policy = usePolicy(currentReport?.policyID);
@@ -98,12 +99,12 @@ function SplitExpensePage({route}: SplitExpensePageProps) {
 
     const isSplitAvailable = report && transaction && isSplitAction(currentReport, [transaction], originalTransaction, currentPolicy);
 
-    const transactionDetails = getTransactionDetails(transaction, undefined, currentPolicy);
+    const transactionDetails = useMemo<Partial<TransactionDetails>>(() => getTransactionDetails(transaction) ?? {}, [transaction]);
     const transactionDetailsAmount = transactionDetails?.amount ?? 0;
     const sumOfSplitExpenses = useMemo(() => (draftTransaction?.comment?.splitExpenses ?? []).reduce((acc, item) => acc + (item.amount ?? 0), 0), [draftTransaction?.comment?.splitExpenses]);
     const splitExpenses = useMemo(() => draftTransaction?.comment?.splitExpenses ?? [], [draftTransaction?.comment?.splitExpenses]);
 
-    const currencySymbol = currencyList?.[transactionDetails?.currency ?? '']?.symbol ?? transactionDetails?.currency ?? CONST.CURRENCY.USD;
+    const currencySymbol = currencyList?.[transactionDetails.currency ?? '']?.symbol ?? transactionDetails.currency ?? CONST.CURRENCY.USD;
 
     const isPerDiem = isPerDiemRequest(transaction);
     const isCard = isManagedCardTransaction(transaction);
@@ -111,13 +112,14 @@ function SplitExpensePage({route}: SplitExpensePageProps) {
     const iouActions = getIOUActionForTransactions([originalTransactionID], expenseReport?.reportID);
     const {iouReport} = useGetIOUReportFromReportAction(iouActions.at(0));
 
-    const isPercentageMode = selectedTab === CONST.IOU.SPLIT_TYPE.PERCENTAGE;
-    const isDateMode = selectedTab === CONST.IOU.SPLIT_TYPE.DATE;
+    const isPercentageMode = (selectedTab as string) === CONST.TAB.SPLIT.PERCENTAGE;
+    const isDateMode = (selectedTab as string) === CONST.TAB.SPLIT.DATE;
     const childTransactions = useMemo(() => getChildTransactions(allTransactions, allReports, transactionID), [allReports, allTransactions, transactionID]);
     const splitFieldDataFromChildTransactions = useMemo(() => childTransactions.map((currentTransaction) => initSplitExpenseItemData(currentTransaction)), [childTransactions]);
     const splitFieldDataFromOriginalTransaction = useMemo(() => initSplitExpenseItemData(transaction), [transaction]);
     const currentUserPersonalDetails = useCurrentUserPersonalDetails();
     const [transactionViolations] = useOnyx(ONYXKEYS.COLLECTION.TRANSACTION_VIOLATIONS, {canBeMissing: true});
+    const [quickAction] = useOnyx(ONYXKEYS.NVP_QUICK_ACTION_GLOBAL_CREATE, {canBeMissing: true});
     const icons = useMemoizedLazyExpensifyIcons(['ArrowsLeftRight', 'Plus'] as const);
 
     const {isBetaEnabled} = usePermissions();
@@ -210,6 +212,8 @@ function SplitExpensePage({route}: SplitExpensePageProps) {
             isASAPSubmitBetaEnabled: isBetaEnabled(CONST.BETAS.ASAP_SUBMIT),
             currentUserPersonalDetails,
             transactionViolations,
+            policyRecentlyUsedCurrencies: policyRecentlyUsedCurrencies ?? [],
+            quickAction,
         });
     }, [
         splitExpenses,
@@ -239,11 +243,13 @@ function SplitExpensePage({route}: SplitExpensePageProps) {
         transactionDetails?.currency,
         isBetaEnabled,
         transactionViolations,
+        policyRecentlyUsedCurrencies,
+        quickAction,
     ]);
 
     const onSplitExpenseValueChange = useCallback(
-        (id: string, value: number, mode: ValueOf<typeof CONST.IOU.SPLIT_TYPE>) => {
-            if (mode === CONST.IOU.SPLIT_TYPE.AMOUNT || mode === CONST.IOU.SPLIT_TYPE.DATE) {
+        (id: string, value: number, mode: ValueOf<typeof CONST.TAB.SPLIT>) => {
+            if (mode === CONST.TAB.SPLIT.AMOUNT || mode === CONST.TAB.SPLIT.DATE) {
                 const amountInCents = convertToBackendAmount(value);
                 updateSplitExpenseAmountField(draftTransaction, id, amountInCents);
             } else {
@@ -256,7 +262,7 @@ function SplitExpensePage({route}: SplitExpensePageProps) {
 
     const getTranslatedText = useCallback((item: TranslationPathOrText) => (item.translationPath ? translate(item.translationPath) : (item.text ?? '')), [translate]);
 
-    const sections = useMemo(() => {
+    const options = useMemo(() => {
         const dotSeparator: TranslationPathOrText = {text: ` ${CONST.DOT_SEPARATOR} `};
         const isTransactionMadeWithCard = isManagedCardTransaction(transaction);
         const showCashOrCard: TranslationPathOrText = {translationPath: isTransactionMadeWithCard ? 'iou.card' : 'iou.cash'};
@@ -301,7 +307,7 @@ function SplitExpensePage({route}: SplitExpensePageProps) {
                 currency: draftTransaction?.currency ?? CONST.CURRENCY.USD,
                 transactionID: item?.transactionID ?? CONST.IOU.OPTIMISTIC_TRANSACTION_ID,
                 currencySymbol,
-                mode: CONST.IOU.SPLIT_TYPE.AMOUNT,
+                mode: CONST.TAB.SPLIT.AMOUNT,
                 percentage,
                 onSplitExpenseValueChange,
                 isSelected: splitExpenseTransactionID === item.transactionID,
@@ -310,9 +316,7 @@ function SplitExpensePage({route}: SplitExpensePageProps) {
             };
         });
 
-        const newSections: Array<SectionListDataType<SplitListItemType>> = [{data: items}];
-
-        return newSections;
+        return items;
     }, [
         transaction,
         draftTransaction?.comment?.splitExpenses,
@@ -365,7 +369,7 @@ function SplitExpensePage({route}: SplitExpensePageProps) {
     const footerContent = useMemo(() => {
         const shouldShowWarningMessage = sumOfSplitExpenses < transactionDetailsAmount;
         const warningMessage = shouldShowWarningMessage
-            ? translate('iou.totalAmountLessThanOriginal', {amount: convertToDisplayString(transactionDetailsAmount - sumOfSplitExpenses, transactionDetails?.currency)})
+            ? translate('iou.totalAmountLessThanOriginal', {amount: convertToDisplayString(transactionDetailsAmount - sumOfSplitExpenses, transactionDetails.currency)})
             : '';
         return (
             <View style={[styles.ph5, styles.pb5]}>
@@ -388,19 +392,7 @@ function SplitExpensePage({route}: SplitExpensePageProps) {
                 />
             </View>
         );
-    }, [
-        sumOfSplitExpenses,
-        transactionDetailsAmount,
-        translate,
-        transactionDetails?.currency,
-        errorMessage,
-        styles.ph1,
-        styles.mb2,
-        styles.w100,
-        styles.ph5,
-        styles.pb5,
-        onSaveSplitExpense,
-    ]);
+    }, [sumOfSplitExpenses, transactionDetailsAmount, translate, transactionDetails.currency, errorMessage, styles.ph1, styles.mb2, styles.w100, styles.ph5, styles.pb5, onSaveSplitExpense]);
 
     const splitDatesTitle = useMemo(() => {
         const startDate = draftTransaction?.comment?.splitsStartDate;
@@ -430,13 +422,10 @@ function SplitExpensePage({route}: SplitExpensePageProps) {
         );
     }, [styles.pb3, styles.moneyRequestMenuItem, styles.flex1, translate, splitDatesTitle, handleDatePress]);
 
-    const initiallyFocusedOptionKey = useMemo(
-        () => sections.at(0)?.data.find((option) => option.transactionID === splitExpenseTransactionID)?.keyForList,
-        [sections, splitExpenseTransactionID],
-    );
+    const initiallyFocusedOptionKey = options.find((option) => option.transactionID === splitExpenseTransactionID)?.keyForList;
 
     const headerTitle = useMemo(() => {
-        if (splitExpenseTransactionID) {
+        if (Number(splitExpenseTransactionID)) {
             return translate('iou.editSplits');
         }
         if (isPercentageMode) {
@@ -485,48 +474,52 @@ function SplitExpensePage({route}: SplitExpensePageProps) {
                         <View style={styles.flex1}>
                             <OnyxTabNavigator
                                 id={CONST.TAB.SPLIT_EXPENSE_TAB_TYPE}
-                                defaultSelectedTab={CONST.IOU.SPLIT_TYPE.AMOUNT}
+                                defaultSelectedTab={CONST.TAB.SPLIT.AMOUNT}
                                 tabBar={TabSelector}
                             >
-                                <TopTab.Screen name={CONST.IOU.SPLIT_TYPE.AMOUNT}>
+                                <TopTab.Screen name={CONST.TAB.SPLIT.AMOUNT}>
                                     {() => (
                                         <TabScreenWithFocusTrapWrapper>
                                             <View style={styles.flex1}>
-                                                <SplitAmountList
-                                                    sections={sections}
+                                                <SplitList
+                                                    data={options}
                                                     initiallyFocusedOptionKey={initiallyFocusedOptionKey ?? undefined}
                                                     onSelectRow={onSelectRow}
                                                     listFooterContent={listFooterContent}
+                                                    mode={CONST.TAB.SPLIT.AMOUNT}
                                                 />
                                                 {footerContent}
                                             </View>
                                         </TabScreenWithFocusTrapWrapper>
                                     )}
                                 </TopTab.Screen>
-                                <TopTab.Screen name={CONST.IOU.SPLIT_TYPE.PERCENTAGE}>
+                                <TopTab.Screen name={CONST.TAB.SPLIT.PERCENTAGE}>
                                     {() => (
                                         <TabScreenWithFocusTrapWrapper>
                                             <View style={styles.flex1}>
-                                                <SplitPercentageList
-                                                    sections={sections}
+                                                <SplitList
+                                                    data={options}
                                                     initiallyFocusedOptionKey={initiallyFocusedOptionKey ?? undefined}
                                                     onSelectRow={onSelectRow}
                                                     listFooterContent={listFooterContent}
+                                                    mode={CONST.TAB.SPLIT.PERCENTAGE}
                                                 />
                                                 {footerContent}
                                             </View>
                                         </TabScreenWithFocusTrapWrapper>
                                     )}
                                 </TopTab.Screen>
-                                <TopTab.Screen name={CONST.IOU.SPLIT_TYPE.DATE}>
+                                <TopTab.Screen name={CONST.TAB.SPLIT.DATE}>
                                     {() => (
                                         <TabScreenWithFocusTrapWrapper>
                                             <View style={styles.flex1}>
                                                 {headerDateContent}
-                                                <SplitAmountList
-                                                    sections={sections}
+                                                <SplitList
+                                                    data={options}
                                                     initiallyFocusedOptionKey={initiallyFocusedOptionKey ?? undefined}
                                                     onSelectRow={onSelectRow}
+                                                    listFooterContent={<View style={[shouldUseNarrowLayout && styles.mb3]} />}
+                                                    mode={CONST.TAB.SPLIT.DATE}
                                                 />
                                                 {footerContent}
                                             </View>
@@ -537,11 +530,12 @@ function SplitExpensePage({route}: SplitExpensePageProps) {
                         </View>
                     ) : (
                         <View style={styles.flex1}>
-                            <SplitAmountList
-                                sections={sections}
+                            <SplitList
+                                data={options}
                                 initiallyFocusedOptionKey={initiallyFocusedOptionKey ?? undefined}
                                 onSelectRow={onSelectRow}
                                 listFooterContent={listFooterContent}
+                                mode={CONST.TAB.SPLIT.AMOUNT}
                             />
                             {footerContent}
                         </View>

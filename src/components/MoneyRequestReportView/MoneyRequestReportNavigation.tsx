@@ -35,6 +35,7 @@ function MoneyRequestReportNavigation({reportID, shouldDisplayNarrowVersion}: Mo
     });
 
     const [cardFeeds] = useOnyx(ONYXKEYS.COLLECTION.SHARED_NVP_PRIVATE_DOMAIN_MEMBER, {canBeMissing: true});
+    const [bankAccountList] = useOnyx(ONYXKEYS.BANK_ACCOUNT_LIST, {canBeMissing: true});
 
     const archivedReportsIdSet = useArchivedReportsIdSet();
 
@@ -46,7 +47,9 @@ function MoneyRequestReportNavigation({reportID, shouldDisplayNarrowVersion}: Mo
             data: currentSearchResults.data,
             currentAccountID: currentUserDetails.accountID,
             currentUserEmail: currentUserDetails.email ?? '',
+            translate,
             formatPhoneNumber,
+            bankAccountList,
             groupBy,
             reportActions: exportReportActions,
             currentSearch: lastSearchQuery?.searchKey,

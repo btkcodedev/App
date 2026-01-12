@@ -14,6 +14,7 @@ import {
     WideRHPContext,
 } from '@components/WideRHPContextProvider';
 import useResponsiveLayout from '@hooks/useResponsiveLayout';
+import useSidePanel from '@hooks/useSidePanel';
 import useThemeStyles from '@hooks/useThemeStyles';
 import useWindowDimensions from '@hooks/useWindowDimensions';
 import {abandonReviewDuplicateTransactions} from '@libs/actions/Transaction';
@@ -47,12 +48,13 @@ const getWideRHPWidth = (windowWidth: number) => variables.sideBarWidth + calcul
 
 function SecondaryOverlay() {
     const {shouldRenderSecondaryOverlayForWideRHP, shouldRenderSecondaryOverlayForRHPOnWideRHP, shouldRenderSecondaryOverlayForRHPOnSuperWideRHP} = useContext(WideRHPContext);
+    const {sidePanelOffset} = useSidePanel();
 
     if (shouldRenderSecondaryOverlayForWideRHP) {
         return (
             <Overlay
                 progress={secondOverlayWideRHPProgress}
-                positionRightValue={animatedWideRHPWidth}
+                positionRightValue={Animated.add(sidePanelOffset.current, animatedWideRHPWidth)}
                 onPress={() => Navigation.closeRHPFlow()}
             />
         );
@@ -62,7 +64,7 @@ function SecondaryOverlay() {
         return (
             <Overlay
                 progress={secondOverlayRHPOnWideRHPProgress}
-                positionRightValue={variables.sideBarWidth}
+                positionRightValue={Animated.add(sidePanelOffset.current, variables.sideBarWidth)}
                 onPress={Navigation.dismissToPreviousRHP}
             />
         );
@@ -72,7 +74,7 @@ function SecondaryOverlay() {
         return (
             <Overlay
                 progress={secondOverlayRHPOnSuperWideRHPProgress}
-                positionRightValue={variables.sideBarWidth}
+                positionRightValue={Animated.add(sidePanelOffset.current, variables.sideBarWidth)}
                 onPress={Navigation.dismissToSuperWideRHP}
             />
         );
@@ -81,16 +83,22 @@ function SecondaryOverlay() {
     return null;
 }
 
-const loadReportScreen = () => require<ReactComponentModule>('../../../../pages/home/ReportScreen').default;
+const loadRHPReportScreen = () => require<ReactComponentModule>('../../../../pages/home/RHPReportScreen').default;
 
 function RightModalNavigator({navigation, route}: RightModalNavigatorProps) {
-    const {shouldUseNarrowLayout} = useResponsiveLayout();
+    // eslint-disable-next-line rulesdir/prefer-shouldUseNarrowLayout-instead-of-isSmallScreenWidth
+    const {isSmallScreenWidth, shouldUseNarrowLayout} = useResponsiveLayout();
     const isExecutingRef = useRef<boolean>(false);
     const screenOptions = useRHPScreenOptions();
-    const {shouldRenderTertiaryOverlay, clearWideRHPKeys, syncRHPKeys} = useContext(WideRHPContext);
+    const {superWideRHPRouteKeys, shouldRenderTertiaryOverlay, clearWideRHPKeys, syncRHPKeys} = useContext(WideRHPContext);
     const {windowWidth} = useWindowDimensions();
     const modalStackScreenOptions = useModalStackScreenOptions();
     const styles = useThemeStyles();
+    const {sidePanelOffset} = useSidePanel();
+
+    // Animation should be disabled when we open the wide rhp from the narrow one.
+    // When the wide rhp page is opened as first one, it will be animated with the entire RightModalNavigator.
+    const animationEnabledOnSearchReport = superWideRHPRouteKeys.length > 0 || isSmallScreenWidth;
 
     const animatedWidth = expandedRHPProgress.interpolate({
         inputRange: [0, 1, 2],
@@ -337,8 +345,11 @@ function RightModalNavigator({navigation, route}: RightModalNavigatorProps) {
                         />
                         <Stack.Screen
                             name={SCREENS.RIGHT_MODAL.SEARCH_REPORT}
-                            getComponent={loadReportScreen}
-                            options={{...modalStackScreenOptions, animation: Animations.NONE}}
+                            getComponent={loadRHPReportScreen}
+                            options={(props) => {
+                                const options = modalStackScreenOptions(props);
+                                return {...options, animation: animationEnabledOnSearchReport ? Animations.SLIDE_FROM_RIGHT : Animations.NONE};
+                            }}
                         />
                         <Stack.Screen
                             name={SCREENS.RIGHT_MODAL.RESTRICTED_ACTION}
@@ -381,7 +392,7 @@ function RightModalNavigator({navigation, route}: RightModalNavigatorProps) {
                 {!shouldUseNarrowLayout && shouldRenderTertiaryOverlay && (
                     <Overlay
                         progress={thirdOverlayProgress}
-                        positionRightValue={variables.sideBarWidth}
+                        positionRightValue={Animated.add(sidePanelOffset.current, variables.sideBarWidth)}
                         onPress={Navigation.dismissToPreviousRHP}
                     />
                 )}
