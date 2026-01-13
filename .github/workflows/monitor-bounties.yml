@@ -39,25 +39,46 @@ jobs:
             }
 
             // Use direct GitHub Issues API with since parameter for real-time detection
-            const twoDaysAgo = new Date();
-            twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-            const sinceTimestamp = twoDaysAgo.toISOString();
+            const oneDayAgo = new Date();
+            oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+            const sinceTimestamp = oneDayAgo.toISOString();
 
-            // Fetch issues directly from the live database (not search index)
+            // Fetch ALL issues using pagination (Expensify/App is very active)
             console.log(`Fetching issues since ${sinceTimestamp}`);
-            const allIssues = await github.rest.issues.listForRepo({
-              owner: 'Expensify',
-              repo: 'App',
-              state: 'open',
-              since: sinceTimestamp,
-              per_page: 100,
-              sort: 'created',
-              direction: 'desc'
-            });
-            console.log(`Fetched ${allIssues.data.length} total issues from live database`);
+            let allIssuesData = [];
+            let page = 1;
+            let hasMore = true;
+            
+            while (hasMore) {
+              const response = await github.rest.issues.listForRepo({
+                owner: 'Expensify',
+                repo: 'App',
+                state: 'open',
+                since: sinceTimestamp,
+                per_page: 100,
+                page: page,
+                sort: 'created',
+                direction: 'desc'
+              });
+              
+              allIssuesData = allIssuesData.concat(response.data);
+              console.log(`Page ${page}: fetched ${response.data.length} issues`);
+              
+              if (response.data.length < 100) {
+                hasMore = false;
+              } else {
+                page++;
+                // Safety limit to prevent infinite loops
+                if (page > 10) {
+                  console.log('Reached page limit of 10');
+                  hasMore = false;
+                }
+              }
+            }
+            console.log(`Total fetched: ${allIssuesData.length} issues from live database`);
 
             // Filter locally for $250 or $125 in title
-            const bountyIssues = allIssues.data.filter(issue => {
+            const bountyIssues = allIssuesData.filter(issue => {
               // Skip pull requests (they come back from issues endpoint too)
               if (issue.pull_request) {
                 return false;
