@@ -78,9 +78,18 @@ jobs:
             console.log(`Total fetched: ${allIssuesData.length} issues from live database`);
 
             // Filter locally for $250 or $125 in title
+            const twoDaysAgo = new Date();
+            twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+            
             const bountyIssues = allIssuesData.filter(issue => {
               // Skip pull requests (they come back from issues endpoint too)
               if (issue.pull_request) {
+                return false;
+              }
+
+              // Only include issues CREATED within last 2 days
+              const createdAt = new Date(issue.created_at);
+              if (createdAt < twoDaysAgo) {
                 return false;
               }
 
@@ -90,7 +99,7 @@ jobs:
               // Sharp check for $250 or $125 in title
               const matchesTarget = /\$250|\[\$250\]|\$125|\[\$125\]/i.test(title);
               
-              console.log(`Issue #${issue.number}: title="${title}", matchesTarget=${matchesTarget}, notSent=${notSent}`);
+              console.log(`Issue #${issue.number}: title="${title}", created="${issue.created_at}", matchesTarget=${matchesTarget}, notSent=${notSent}`);
               
               // Include if NOT already sent AND matches target bounty
               return notSent && matchesTarget;
