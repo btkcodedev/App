@@ -135,6 +135,9 @@ describe('mergeTransactionRequest', () => {
             mergeTransaction,
             targetTransaction,
             sourceTransaction,
+            targetTransactionThreadReport: {reportID: 'target-report-456'},
+            targetTransactionThreadParentReport: undefined,
+            targetTransactionThreadParentReportNextStep: undefined,
             allTransactionViolations: createAllTransactionViolations(targetTransaction.transactionID, sourceTransaction.transactionID, targetViolations, sourceViolations),
             policy: undefined,
             policyTags: undefined,
@@ -258,6 +261,9 @@ describe('mergeTransactionRequest', () => {
             mergeTransaction,
             targetTransaction,
             sourceTransaction,
+            targetTransactionThreadReport: {reportID: 'target-report-456'},
+            targetTransactionThreadParentReport: undefined,
+            targetTransactionThreadParentReportNextStep: undefined,
             allTransactionViolations: createAllTransactionViolations(targetTransaction.transactionID, sourceTransaction.transactionID, mockViolations, mockViolations),
             policy: undefined,
             policyTags: undefined,
@@ -356,6 +362,9 @@ describe('mergeTransactionRequest', () => {
             mergeTransaction,
             targetTransaction,
             sourceTransaction,
+            targetTransactionThreadReport: {reportID: 'target123'},
+            targetTransactionThreadParentReport: undefined,
+            targetTransactionThreadParentReportNextStep: undefined,
             allTransactionViolations: createAllTransactionViolations(targetTransaction.transactionID, sourceTransaction.transactionID, mockViolations, mockViolations),
             policy: undefined,
             policyTags: undefined,
@@ -462,6 +471,9 @@ describe('mergeTransactionRequest', () => {
                 mergeTransaction,
                 targetTransaction,
                 sourceTransaction,
+                targetTransactionThreadReport: {reportID: 'target-report-456'},
+                targetTransactionThreadParentReport: undefined,
+                targetTransactionThreadParentReportNextStep: undefined,
                 allTransactionViolations: createAllTransactionViolations(targetTransaction.transactionID, sourceTransaction.transactionID, targetViolations, sourceViolations),
                 policy: undefined,
                 policyTags: undefined,
@@ -724,6 +736,7 @@ describe('areTransactionsEligibleForMerge', () => {
         it('can not merge 2 split expenses', () => {
             const splitExpenseTransaction1 = {
                 ...createRandomTransaction(1),
+                reportID: CONST.REPORT.SPLIT_REPORT_ID,
                 managedCard: false,
                 cardName: CONST.EXPENSE.TYPE.CASH_CARD_NAME,
                 comment: {
@@ -734,6 +747,7 @@ describe('areTransactionsEligibleForMerge', () => {
             } as Transaction;
             const splitExpenseTransaction2 = {
                 ...createRandomTransaction(2),
+                reportID: CONST.REPORT.SPLIT_REPORT_ID,
                 managedCard: false,
                 cardName: CONST.EXPENSE.TYPE.CASH_CARD_NAME,
                 comment: {
